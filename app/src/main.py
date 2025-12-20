@@ -1,50 +1,91 @@
 from contextlib import asynccontextmanager
-from fastapi import FastAPI
-from fastrtc import Stream, WebRTCConfig
+from fastapi import FastAPI, Depends, Query, status
+from fastapi.responses import StreamingResponse
+from fastapi.middleware.cors import CORSMiddleware
+from pydantic import BaseModel
 from src.api.dependencies import get_orchestrator
-from src.infrastructure.webrtc.stream_handler import create_handler
+from src.application.services.conversation_orchestrator import ConversationOrchestrator
 from src.core.logger import setup_logging, logger
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     # Startup logic
     setup_logging()
-    logger.info("Initializing HAR-228 Voice AI Service...")
+    logger.info("Initializing HAR-228 Text-to-Voice Service...")
     yield
     # Shutdown logic
     logger.info("Shutting down service...")
 
 app = FastAPI(
     title="HAR-228 Voice AI",
-    description="Microservicio de voz a voz en tiempo real usando WebRTC",
+    version="1.0.0",
+    description="Microservicio profesional para conversión de texto a voz con IA delegada.",
     lifespan=lifespan
 )
 
-# Initialize the Stream
-# FastRTC handles most of the WebRTC complexity
-stream = Stream(
-    handler=create_handler(get_orchestrator()),
-    mode="send-receive",  # Full duplex: send audio, receive audio
-    modality="audio",
-    additional_outputs_per_input=10, # Allow multiple output frames per input frame
+# Enable CORS for frontend integration
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=["*"],
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
 )
 
-# Mount the stream to FastAPI
-# This adds the WebRTC endpoints and a built-in UI at the mount path
-stream.mount(path="/conversation", app=app)
+class ChatRequest(BaseModel):
+    text: str
 
-@app.get("/")
+@app.post("/chat", tags=["Voz"], summary="Convertir JSON a Voz")
+async def chat_to_voice_post(
+    request: ChatRequest, 
+    orchestrator: ConversationOrchestrator = Depends(get_orchestrator)
+):
+    """
+    Recibe un objeto JSON con el texto y devuelve un flujo de audio MP3.
+    """
+    logger.info("Received POST text input", text=request.text)
+    return _process_text_to_audio(request.text, orchestrator)
+
+@app.get("/chat", tags=["Voz"], summary="Convertir Parámetro a Voz")
+async def chat_to_voice_get(
+    text: str = Query(..., description="Texto a convertir en voz"),
+    orchestrator: ConversationOrchestrator = Depends(get_orchestrator)
+):
+    """
+    Recibe texto por la URL y devuelve un flujo de audio MP3. 
+    Ideal para etiquetas `<audio>` o pruebas rápidas.
+    """
+    logger.info("Received GET text input", text=text)
+    return _process_text_to_audio(text, orchestrator)
+
+def _process_text_to_audio(text: str, orchestrator: ConversationOrchestrator):
+    # 1. Get LLM stream
+    llm_history = [{"role": "user", "content": text}]
+    text_stream = orchestrator.llm.generate_stream(llm_history, orchestrator.system_prompt)
+    
+    # 2. Get TTS stream
+    audio_stream = orchestrator.tts.synthesize_stream(text_stream)
+    
+    # 3. Return as StreamingResponse (MP3)
+    return StreamingResponse(audio_stream, media_type="audio/mpeg")
+
+@app.get("/health", tags=["Sistema"])
 async def health_check():
+    """Verifica el estado de salud del microservicio y sus proveedores."""
     return {
         "status": "online",
         "service": "HAR-228",
-        "endpoints": {
-            "webrtc": "/conversation",
-            "docs": "/docs"
+        "version": "1.0.0",
+        "configurations": {
+            "llm": "active",
+            "tts": "active"
         }
     }
 
+@app.get("/", include_in_schema=False)
+async def root():
+    return {"message": "HAR-228 Text-to-Voice API. Visit /docs for documentation."}
+
 if __name__ == "__main__":
     import uvicorn
-    # En desarrollo local: uvicorn src.main:app --reload
     uvicorn.run(app, host="0.0.0.0", port=8000)

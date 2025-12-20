@@ -2,14 +2,14 @@ from dataclasses import dataclass, field
 from datetime import datetime
 from typing import List, Optional
 from uuid import UUID, uuid4
-from src.core.types import SessionState
+from enum import Enum
 
-@dataclass
-class AudioChunk:
-    """Represents a segment of audio data."""
-    content: bytes
-    sample_rate: int
-    timestamp: datetime = field(default_factory=datetime.now)
+class SessionState(str, Enum):
+    IDLE = "idle"
+    LISTENING = "listening"
+    PROCESSING = "processing"
+    SPEAKING = "speaking"
+    ERROR = "error"
 
 @dataclass
 class ChatMessage:
@@ -25,10 +25,3 @@ class ConversationSession:
     state: SessionState = SessionState.IDLE
     history: List[ChatMessage] = field(default_factory=list)
     metadata: dict = field(default_factory=dict)
-
-@dataclass
-class AIResponse:
-    """Represents the output from the LLM."""
-    text: str
-    model: str
-    usage: Optional[dict] = None

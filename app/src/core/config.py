@@ -12,19 +12,27 @@ class Settings(BaseSettings):
     APP_ENV: AppEnv = AppEnv.DEVELOPMENT
     LOG_LEVEL: str = "INFO"
     
-    # OpenRouter (LLM)
-    OPENROUTER_API_KEY: str
+    # Provider Settings
+    LLM_PROVIDER: str = "openrouter"  # options: openrouter, openai, gemini, deepseek
+    TTS_PROVIDER: str = "edge_tts"
+    
+    # OpenRouter Settings
+    OPENROUTER_API_KEY: Optional[str] = None
     OPENROUTER_MODEL: str = "mistralai/devstral-2512:free"
     OPENROUTER_BASE_URL: str = "https://openrouter.ai/api/v1"
     
-    # Provider Settings
-    STT_PROVIDER: str = "mock"
-    TTS_PROVIDER: str = "edge_tts"
+    # OpenAI Settings (Direct)
+    OPENAI_API_KEY: Optional[str] = None
+    OPENAI_MODEL: str = "gpt-4o"
     
-    # Audio Settings
-    SAMPLE_RATE_VAD: int = 16000
-    SAMPLE_RATE_WEBRTC: int = 48000
+    # Gemini Settings (Direct)
+    GEMINI_API_KEY: Optional[str] = None
+    GEMINI_MODEL: str = "gemini-3-pro"
     
-    model_config = SettingsConfigDict(env_file=".env", env_file_encoding="utf-8")
+    model_config = SettingsConfigDict(
+        env_file=".env", 
+        env_file_encoding="utf-8",
+        extra="ignore"
+    )
 
 settings = Settings()

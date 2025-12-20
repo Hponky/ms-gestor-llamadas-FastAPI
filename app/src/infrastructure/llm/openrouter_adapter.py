@@ -12,7 +12,7 @@ class OpenRouterLLMAdapter(ILLMProvider):
             api_key=settings.OPENROUTER_API_KEY,
             default_headers={
                 "HTTP-Referer": "https://github.com/Hponky/ms-gestor-llamadas",
-                "X-Title": "HAL-9000 Voice AI"
+                "X-Title": "HAR-228 Voice AI"
             }
         )
         self.model = settings.OPENROUTER_MODEL

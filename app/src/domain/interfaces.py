@@ -22,21 +22,7 @@ class ILLMProvider(ABC):
         """
         pass
 
-class ISTTProvider(ABC):
-    """Port for Speech-to-Text services."""
-    
-    @abstractmethod
-    async def transcribe(self, audio: bytes) -> str:
-        """
-        Converts an audio buffer to text.
-        
-        Args:
-            audio: Raw audio bytes.
-            
-        Returns:
-            The transcribed text.
-        """
-        pass
+
 
 class ITTSProvider(ABC):
     """Port for Text-to-Speech services."""

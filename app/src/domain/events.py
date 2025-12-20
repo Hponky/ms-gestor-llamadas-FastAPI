@@ -1,14 +1,9 @@
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from datetime import datetime
 
 @dataclass
 class DomainEvent:
-    timestamp: datetime = datetime.now()
-
-@dataclass
-class AudioReceived(DomainEvent):
-    session_id: str
-    duration_ms: float
+    timestamp: datetime = field(default_factory=datetime.now)
 
 @dataclass
 class TextGenerated(DomainEvent):
