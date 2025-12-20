@@ -13,7 +13,7 @@ class SileroVADHelper:
         # For this MVP, we implement an energy-based fallback or a skeletal structure
         logger.info("SileroVADHelper initialized (MVP mode)")
 
-    def is_speech(self, audio_chunk: bytes, sample_rate: int) -> bool:
+    def is_speech(self, audio_chunk: bytes) -> bool:
         """
         Detects if there is speech in the audio chunk.
         Currently using energy-based detection as a simple fallback.
