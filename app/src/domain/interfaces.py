@@ -24,6 +24,22 @@ class ILLMProvider(ABC):
 
 
 
+class IVectorStore(ABC):
+    """Port for Vector Storage and retrieval."""
+    
+    @abstractmethod
+    async def search(self, query_vector: List[float], company_id: str, limit: int = 5) -> List[Dict]:
+        """Search for similar contexts filtering by company_id."""
+        pass
+
+class IPromptRepository(ABC):
+    """Port for managing dynamic system prompts."""
+    
+    @abstractmethod
+    def get_prompt_for_company(self, company_id: str, default_prompt: str) -> str:
+        """Retrieve a specific prompt based on the company."""
+        pass
+
 class ITTSProvider(ABC):
     """Port for Text-to-Speech services."""
     
