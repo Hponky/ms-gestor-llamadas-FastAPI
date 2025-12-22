@@ -1,5 +1,6 @@
 from abc import ABC, abstractmethod
 from typing import AsyncGenerator, List, Dict
+from src.domain.entities import ConversationSession
 
 class ILLMProvider(ABC):
     """Port for Language Model services."""
@@ -60,6 +61,25 @@ class IVectorStore(ABC):
         This is crucial for removing obsolete information.
         """
         pass
+
+class ISessionRepository(ABC):
+    """Port for persisting conversation sessions."""
+    
+    @abstractmethod
+    def get_session(self, session_id: str) -> Optional[ConversationSession]:
+        """Retrieve a session by its ID."""
+        pass
+
+    @abstractmethod
+    def save_session(self, session_id: str, session: ConversationSession) -> None:
+        """Persist a session."""
+        pass
+
+    @abstractmethod
+    def delete_session(self, session_id: str) -> None:
+        """Remove a session from storage."""
+        pass
+
 class IPromptRepository(ABC):
     """Port for managing dynamic system prompts."""
     

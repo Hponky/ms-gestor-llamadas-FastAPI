@@ -69,16 +69,24 @@ def get_prompt_repository():
     """Dependency injection for Prompt Repository."""
     return YamlPromptRepository()
 
+from src.infrastructure.sessions.memory_session_repository import InMemorySessionRepository
+
+@lru_cache()
+def get_session_repository():
+    """Dependency injection for Session Repository."""
+    return InMemorySessionRepository()
+
 @lru_cache()
 def get_orchestrator():
     """
     Dependency injection for Conversation Orchestrator.
-    Now injects RAG services for multi-tenant support.
+    Now injects RAG and Session services for multi-tenant support.
     """
     return ConversationOrchestrator(
         llm_provider=get_llm_service(),
         tts_provider=get_tts_service(),
         vector_store=get_vector_store(),
         embedding_provider=get_embedding_service(),
-        prompt_repository=get_prompt_repository()
+        prompt_repository=get_prompt_repository(),
+        session_repository=get_session_repository()
     )

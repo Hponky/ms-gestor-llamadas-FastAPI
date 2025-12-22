@@ -35,6 +35,7 @@ app.add_middleware(
 class ChatRequest(BaseModel):
     text: str
     company_id: str = "default"
+    session_id: str = "default"
     response_format: str = "audio"  # "audio" or "text"
 
 @app.post("/chat", tags=["Voz"], summary="Convertir JSON a Voz")
@@ -43,62 +44,37 @@ async def chat_to_voice_post(
     orchestrator: ConversationOrchestrator = Depends(get_orchestrator)
 ):
     """
-    Recibe texto y company_id, realiza búsqueda RAG y devuelve audio MP3.
+    Recibe texto, company_id y session_id. Realiza búsqueda RAG y mantiene contexto de sesión.
     """
-    logger.info("Received POST request", text=request.text, company_id=request.company_id)
+    logger.info("Received POST request", text=request.text, company_id=request.company_id, session_id=request.session_id)
     return await _process_rag_to_audio(request, orchestrator)
 
 @app.get("/chat", tags=["Voz"], summary="Convertir Parámetro a Voz")
 async def chat_to_voice_get(
     text: str = Query(..., description="Texto a convertir en voz"),
     company_id: str = Query("default", description="ID de la empresa para RAG"),
+    session_id: str = Query("default", description="ID de sesión para mantener contexto"),
     orchestrator: ConversationOrchestrator = Depends(get_orchestrator)
 ):
     """
-    Versión GET para pruebas rápidas. Soporta company_id.
+    Versión GET para pruebas rápidas. Soporta company_id y session_id.
     """
     logger.info("Received GET request", text=text, company_id=company_id)
-    request = ChatRequest(text=text, company_id=company_id)
+    request = ChatRequest(text=text, company_id=company_id, session_id=session_id)
     return await _process_rag_to_audio(request, orchestrator)
 
 async def _process_rag_to_audio(request: ChatRequest, orchestrator: ConversationOrchestrator):
-    # 1. Obtener prompt dinámico por empresa
-    system_prompt = orchestrator.prompt_repository.get_prompt_for_company(
-        request.company_id, 
-        orchestrator.system_prompt
+    # Get unified Text Stream from Orchestrator (Handles RAG + Session Memory)
+    text_stream = await orchestrator.get_chat_response_stream(
+        text=request.text, 
+        company_id=request.company_id, 
+        session_id=request.session_id
     )
-
-    # 2. Búsqueda RAG (Búsqueda semántica con filtro de empresa)
-    context = ""
-    try:
-        query_vector = orchestrator.embedding_provider.embed_text(request.text)
-        search_results = await orchestrator.vector_store.search(
-            query_vector=query_vector, 
-            company_id=request.company_id,
-            limit=3
-        )
-        if search_results:
-            context = "\n".join([res.get("content", "") for res in search_results])
-            logger.info("RAG Context retrieved", matches=len(search_results))
-    except Exception as e:
-        logger.error("RAG search failed", error=str(e))
-
-    # 3. Enriquecer Prompt con contexto
-    full_prompt = system_prompt
-    if context:
-        full_prompt += f"\n\nContexto relevante para esta empresa:\n{context}"
-
-    # 4. Generar flujo LLM
-    llm_history = [{"role": "user", "content": request.text}]
-    text_stream = orchestrator.llm.generate_stream(llm_history, full_prompt)
     
     if request.response_format == "text":
-        async def text_generator():
-            async for chunk in text_stream:
-                yield chunk
-        return StreamingResponse(text_generator(), media_type="text/plain")
+        return StreamingResponse(text_stream, media_type="text/plain")
 
-    # 5. Generar flujo Audio (TTS)
+    # Generate Audio Stream (TTS)
     audio_stream = orchestrator.tts.synthesize_stream(text_stream)
     return StreamingResponse(audio_stream, media_type="audio/mpeg")
 
