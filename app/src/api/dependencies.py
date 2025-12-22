@@ -2,6 +2,7 @@ from functools import lru_cache
 from src.infrastructure.llm.openrouter_adapter import OpenRouterLLMAdapter
 from src.infrastructure.tts.edge_tts_adapter import EdgeTTSAdapter
 from src.infrastructure.embeddings.fastembed_adapter import FastEmbedAdapter
+from src.infrastructure.vector_store.qdrant_adapter import QdrantVectorStoreAdapter
 from src.application.services.conversation_orchestrator import ConversationOrchestrator
 from src.core.config import settings
 
@@ -45,6 +46,21 @@ def get_embedding_service():
         raise NotImplementedError("OpenAI Embedding provider not yet implemented.")
     else:
         raise ValueError(f"Unsupported Embedding provider: {provider}")
+
+@lru_cache()
+def get_vector_store():
+    """
+    Dependency injection for Vector Store provider.
+    Scalable factory to support multiple providers (Qdrant, pgvector, etc).
+    """
+    provider = settings.VECTOR_STORE_PROVIDER.lower()
+    
+    if provider == "qdrant":
+        return QdrantVectorStoreAdapter()
+    elif provider == "pgvector":
+        raise NotImplementedError("pgvector provider not yet implemented.")
+    else:
+        raise ValueError(f"Unsupported Vector Store provider: {provider}")
 
 @lru_cache()
 def get_orchestrator():

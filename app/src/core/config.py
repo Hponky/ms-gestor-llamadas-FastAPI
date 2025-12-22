@@ -16,6 +16,12 @@ class Settings(BaseSettings):
     LLM_PROVIDER: str = "openrouter"  # options: openrouter, openai, gemini, deepseek
     TTS_PROVIDER: str = "edge_tts"
     EMBEDDING_PROVIDER: str = "fastembed"  # options: fastembed, openai
+    VECTOR_STORE_PROVIDER: str = "qdrant"  # options: qdrant, pgvector (future)
+    
+    # Qdrant Settings
+    QDRANT_URL: str = "http://localhost:6333"
+    QDRANT_API_KEY: Optional[str] = None
+    QDRANT_COLLECTION: str = "kb_har_228"
     
     # Embedding Model Settings
     EMBEDDING_MODEL: str = "intfloat/multilingual-e5-small"
