@@ -62,10 +62,23 @@ def get_vector_store():
     else:
         raise ValueError(f"Unsupported Vector Store provider: {provider}")
 
+from src.infrastructure.prompts.yaml_prompt_repository import YamlPromptRepository
+
+@lru_cache()
+def get_prompt_repository():
+    """Dependency injection for Prompt Repository."""
+    return YamlPromptRepository()
+
 @lru_cache()
 def get_orchestrator():
-    """Dependency injection for Conversation Orchestrator."""
+    """
+    Dependency injection for Conversation Orchestrator.
+    Now injects RAG services for multi-tenant support.
+    """
     return ConversationOrchestrator(
         llm_provider=get_llm_service(),
-        tts_provider=get_tts_service()
+        tts_provider=get_tts_service(),
+        vector_store=get_vector_store(),
+        embedding_provider=get_embedding_service(),
+        prompt_repository=get_prompt_repository()
     )

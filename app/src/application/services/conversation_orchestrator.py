@@ -1,6 +1,6 @@
 import asyncio
 from typing import Optional, List
-from src.domain.interfaces import ILLMProvider, ITTSProvider
+from src.domain.interfaces import ILLMProvider, ITTSProvider, IVectorStore, IEmbeddingProvider, IPromptRepository
 from src.domain.entities import ChatMessage, ConversationSession, SessionState
 from src.core.logger import logger
 
@@ -9,10 +9,16 @@ class ConversationOrchestrator:
         self,
         llm_provider: ILLMProvider,
         tts_provider: ITTSProvider,
+        vector_store: IVectorStore,
+        embedding_provider: IEmbeddingProvider,
+        prompt_repository: IPromptRepository,
         system_prompt: str = "Eres HAR-228, un asistente de voz avanzado. Responde de forma concisa y natural."
     ):
         self.llm = llm_provider
         self.tts = tts_provider
+        self.vector_store = vector_store
+        self.embedding_provider = embedding_provider
+        self.prompt_repository = prompt_repository
         self.system_prompt = system_prompt
         
         self.session = ConversationSession()
