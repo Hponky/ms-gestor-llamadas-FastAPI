@@ -45,7 +45,61 @@ class QdrantVectorStoreAdapter(IVectorStore):
             results = [hit.payload for hit in search_result]
             logger.debug("Vector search completed", company_id=company_id, matches=len(results))
             return results
-            
         except Exception as e:
             logger.error("Error searching in Qdrant", error=str(e), company_id=company_id)
             return []
+
+    async def upsert(self, points: List[Dict]) -> bool:
+        """
+        Add or update information fragments in Qdrant.
+        Expects a list of dicts with: id, vector, and payload.
+        """
+        try:
+            q_points = [
+                models.PointStruct(
+                    id=p["id"],
+                    vector=p["vector"],
+                    payload=p["payload"]
+                ) for p in points
+            ]
+            self.client.upsert(
+                collection_name=self.collection_name,
+                points=q_points
+            )
+            logger.info("Upserted points successfully", count=len(points))
+            return True
+        except Exception as e:
+            logger.error("Failed to upsert points in Qdrant", error=str(e))
+            return False
+
+    async def delete(self, company_id: str, filter_metadata: Dict = None) -> bool:
+        """
+        Deletes knowledge blocks for a specific company.
+        Can optionally filter by other metadata (e.g. source_id).
+        """
+        try:
+            must_filters = [
+                models.FieldCondition(
+                    key="company_id",
+                    match=models.MatchValue(value=company_id)
+                )
+            ]
+            
+            if filter_metadata:
+                for key, value in filter_metadata.items():
+                    must_filters.append(
+                        models.FieldCondition(
+                            key=key,
+                            match=models.MatchValue(value=value)
+                        )
+                    )
+
+            self.client.delete(
+                collection_name=self.collection_name,
+                points_selector=models.Filter(must=must_filters)
+            )
+            logger.info("Deleted points in Qdrant", company_id=company_id)
+            return True
+        except Exception as e:
+            logger.error("Failed to delete points in Qdrant", error=str(e), company_id=company_id)
+            return False

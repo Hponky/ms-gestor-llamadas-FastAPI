@@ -102,6 +102,56 @@ async def _process_rag_to_audio(request: ChatRequest, orchestrator: Conversation
     audio_stream = orchestrator.tts.synthesize_stream(text_stream)
     return StreamingResponse(audio_stream, media_type="audio/mpeg")
 
+class IngestRequest(BaseModel):
+    text: str
+    company_id: str
+    metadata: dict = {}
+
+@app.post("/ingest", tags=["Admin"], summary="Añadir Conocimiento a la RAG")
+async def ingest_knowledge(
+    request: IngestRequest,
+    orchestrator: ConversationOrchestrator = Depends(get_orchestrator)
+):
+    """
+    Convierte texto en vectores y lo guarda en la base de datos de la empresa.
+    Si envías un 'id' en el metadata, se realizará un Upsert (Actualización).
+    """
+    import uuid
+    point_id = request.metadata.get("id", str(uuid.uuid4()))
+    
+    # 1. Generar Vector
+    vector = orchestrator.embedding_provider.embed_text(request.text)
+    
+    # 2. Preparar Payload
+    payload = request.metadata.copy()
+    payload["text"] = request.text
+    payload["company_id"] = request.company_id
+    
+    # 3. Guardar en Vector Store
+    success = await orchestrator.vector_store.upsert([{
+        "id": point_id,
+        "vector": vector,
+        "payload": payload
+    }])
+    
+    if success:
+        return {"status": "success", "id": point_id, "message": "Conocimiento guardado/actualizado."}
+    return {"status": "error", "message": "No se pudo guardar el conocimiento."}
+
+@app.delete("/knowledge/{company_id}", tags=["Admin"], summary="Eliminar Conocimiento de la Empresa")
+async def delete_knowledge(
+    company_id: str,
+    orchestrator: ConversationOrchestrator = Depends(get_orchestrator)
+):
+    """
+    Elimina TODA la información de una empresa. 
+    Crucial para remover términos y condiciones obsoletos.
+    """
+    success = await orchestrator.vector_store.delete(company_id)
+    if success:
+        return {"status": "success", "message": f"Conocimiento de {company_id} eliminado."}
+    return {"status": "error", "message": "No se pudo eliminar el conocimiento."}
+
 @app.get("/health", tags=["Sistema"])
 async def health_check():
     """Verifica el estado de salud del microservicio y sus proveedores."""

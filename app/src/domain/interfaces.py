@@ -45,6 +45,21 @@ class IVectorStore(ABC):
         """Search for similar contexts filtering by company_id."""
         pass
 
+    @abstractmethod
+    async def upsert(self, points: List[Dict]) -> bool:
+        """
+        Add or update points in the vector store.
+        Each point should contain: id, vector, and payload (with company_id).
+        """
+        pass
+
+    @abstractmethod
+    async def delete(self, company_id: str, filter_metadata: Dict = None) -> bool:
+        """
+        Delete points filtering by company_id and optionally other metadata.
+        This is crucial for removing obsolete information.
+        """
+        pass
 class IPromptRepository(ABC):
     """Port for managing dynamic system prompts."""
     
