@@ -70,11 +70,22 @@ def get_prompt_repository():
     return YamlPromptRepository()
 
 from src.infrastructure.sessions.memory_session_repository import InMemorySessionRepository
+from src.infrastructure.sessions.redis_session_repository import RedisSessionRepository
 
 @lru_cache()
 def get_session_repository():
-    """Dependency injection for Session Repository."""
-    return InMemorySessionRepository()
+    """
+    Dependency injection for Session Repository.
+    Scalable factory for memory or Redis persistence.
+    """
+    provider = settings.SESSION_PROVIDER.lower()
+    
+    if provider == "memory":
+        return InMemorySessionRepository()
+    elif provider == "redis":
+        return RedisSessionRepository()
+    else:
+        raise ValueError(f"Unsupported Session provider: {provider}")
 
 @lru_cache()
 def get_orchestrator():

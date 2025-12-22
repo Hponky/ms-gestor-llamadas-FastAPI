@@ -17,6 +17,13 @@ class Settings(BaseSettings):
     TTS_PROVIDER: str = "edge_tts"
     EMBEDDING_PROVIDER: str = "fastembed"  # options: fastembed, openai
     VECTOR_STORE_PROVIDER: str = "qdrant"  # options: qdrant, pgvector (future)
+    SESSION_PROVIDER: str = "memory"  # options: memory, redis
+    
+    # Redis Settings
+    REDIS_HOST: str = "localhost"
+    REDIS_PORT: int = 6379
+    REDIS_PASSWORD: Optional[str] = None
+    REDIS_TTL: int = 3600  # 1 hour
     
     # Qdrant Settings
     QDRANT_URL: str = "http://localhost:6333"
