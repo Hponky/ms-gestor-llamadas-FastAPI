@@ -1,6 +1,7 @@
 from functools import lru_cache
 from src.infrastructure.llm.openrouter_adapter import OpenRouterLLMAdapter
 from src.infrastructure.tts.edge_tts_adapter import EdgeTTSAdapter
+from src.infrastructure.embeddings.fastembed_adapter import FastEmbedAdapter
 from src.application.services.conversation_orchestrator import ConversationOrchestrator
 from src.core.config import settings
 
@@ -29,6 +30,21 @@ def get_llm_service():
 def get_tts_service():
     """Dependency injection for TTS provider."""
     return EdgeTTSAdapter()
+
+@lru_cache()
+def get_embedding_service():
+    """
+    Dependency injection for Embedding provider.
+    Scalable factory to support multiple providers.
+    """
+    provider = settings.EMBEDDING_PROVIDER.lower()
+    
+    if provider == "fastembed":
+        return FastEmbedAdapter()
+    elif provider == "openai":
+        raise NotImplementedError("OpenAI Embedding provider not yet implemented.")
+    else:
+        raise ValueError(f"Unsupported Embedding provider: {provider}")
 
 @lru_cache()
 def get_orchestrator():

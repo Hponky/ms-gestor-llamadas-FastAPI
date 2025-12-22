@@ -15,6 +15,10 @@ class Settings(BaseSettings):
     # Provider Settings
     LLM_PROVIDER: str = "openrouter"  # options: openrouter, openai, gemini, deepseek
     TTS_PROVIDER: str = "edge_tts"
+    EMBEDDING_PROVIDER: str = "fastembed"  # options: fastembed, openai
+    
+    # Embedding Model Settings
+    EMBEDDING_MODEL: str = "intfloat/multilingual-e5-small"
     
     # OpenRouter Settings
     OPENROUTER_API_KEY: Optional[str] = None

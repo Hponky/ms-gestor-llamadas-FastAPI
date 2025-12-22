@@ -24,6 +24,19 @@ class ILLMProvider(ABC):
 
 
 
+class IEmbeddingProvider(ABC):
+    """Port for text embedding services."""
+    
+    @abstractmethod
+    def embed_text(self, text: str) -> List[float]:
+        """Convert text into a vector representation."""
+        pass
+
+    @abstractmethod
+    def embed_batch(self, texts: List[str]) -> List[List[float]]:
+        """Convert a list of texts into vector representations."""
+        pass
+
 class IVectorStore(ABC):
     """Port for Vector Storage and retrieval."""
     

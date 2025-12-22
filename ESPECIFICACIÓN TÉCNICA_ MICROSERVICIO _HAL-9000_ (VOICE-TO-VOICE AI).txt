@@ -1,0 +1,184 @@
+﻿
+
+# ESPECIFICACIÓN TÉCNICA: MICROSERVICIO "HAR-228" - PARTE 4/4
+
+**Foco:** Implementación de RAG (Knowledge Base), Embeddings Locales Eficientes y Gestión Dinámica de Prompts por Empresa.
+
+**Cambio de Alcance:** Se elimina la responsabilidad de STT del Backend. El input principal ahora es texto.
+
+---
+
+## 15. NUEVAS DEPENDENCIAS (RAG STACK)
+
+El agente debe añadir estas librerías al `requirements.txt`. Buscamos la inferencia más rápida en CPU.
+
+```text
+fastembed>=0.2.0       # La forma más rápida y ligera de correr E5-small en CPU
+qdrant-client>=1.8.0   # Cliente para la Base de Datos Vectorial (puede ser docker local)
+pyyaml>=6.0            # Para gestión de configuración de prompts por empresa
+```
+
+*Nota:* Usamos `fastembed` en lugar de `sentence-transformers` porque es mucho más ligero, no requiere PyTorch completo y está optimizado para modelos ONNX cuantizados por defecto.
+
+---
+
+## 16. DOMINIO: INTERFACES DE CONOCIMIENTO
+
+Para cumplir con el requisito de "adaptable a cualquier base de datos", definimos interfaces estrictas en `src/domain/interfaces.py`.
+
+### A. Puerto de Embeddings (`IEmbeddingService`)
+Abstracción para convertir texto a vectores.
+```python
+class IEmbeddingService(ABC):
+    @abstractmethod
+    async def embed_query(self, text: str) -> list[float]:
+        """Genera embedding para una búsqueda (query)."""
+        pass
+
+    @abstractmethod
+    async def embed_document(self, text: str) -> list[float]:
+        """Genera embedding para almacenar documentos."""
+        pass
+```
+*Importante:* El modelo E5 requiere prefijos diferentes ("query: " vs "passage: "). La interfaz separa estos métodos para evitar errores.
+
+### B. Puerto de Base Vectorial (`IVectorStore`)
+Abstracción agnóstica de la DB (Qdrant, Chroma, Pinecone).
+```python
+from dataclasses import dataclass
+
+@dataclass
+class KnowledgeChunk:
+    content: str
+    metadata: dict
+    score: float
+
+class IVectorStore(ABC):
+    @abstractmethod
+    async def search(self, query_vector: list[float], company_id: str, limit: int = 3) -> list[KnowledgeChunk]:
+        """Busca vectores similares filtrando estrictamente por company_id."""
+        pass
+    
+    @abstractmethod
+    async def upsert(self, chunks: list[KnowledgeChunk], company_id: str):
+        """Inserta o actualiza conocimiento."""
+        pass
+```
+
+### C. Puerto de Prompts (`IPromptRepository`)
+Para escalar de empresa a empresa sin tocar código.
+```python
+class IPromptRepository(ABC):
+    @abstractmethod
+    def get_system_prompt(self, company_id: str) -> str:
+        """Recupera la personalidad y reglas de la empresa específica."""
+        pass
+```
+
+---
+
+## 17. INFRAESTRUCTURA: IMPLEMENTACIÓN E5 Y QDRANT
+
+### 17.1. Adaptador de Embeddings (Local E5)
+**Archivo:** `src/infrastructure/knowledge/fastembed_adapter.py`
+
+El agente debe implementar `IEmbeddingService` usando la librería `fastembed`.
+
+**Instrucciones de Implementación:**
+*   Inicializar el modelo `intfloat/multilingual-e5-small`.
+*   **Crucial:** El modelo E5 requiere que las consultas lleven el prefijo `"query: "` y los documentos `"passage: "`. `fastembed` suele manejar esto, pero si se usa raw, el adaptador debe concatenar el prefijo.
+*   Mantener el modelo en memoria (Singleton) para no cargarlo en cada petición.
+
+```python
+# Pseudocódigo guía
+from fastembed import TextEmbedding
+
+class FastEmbedAdapter(IEmbeddingService):
+    def __init__(self):
+        # Threads=1 para evitar saturar la CPU si hay muchas peticiones paralelas
+        self.model = TextEmbedding(model_name="intfloat/multilingual-e5-small", threads=1)
+
+    async def embed_query(self, text: str) -> list[float]:
+        # FastEmbed añade prefijos automáticamente si se usa correctamente, 
+        # pero verificaremos que se genere el vector optimizado para búsqueda.
+        embeddings = list(self.model.embed([text])) # Retorna generador
+        return embeddings[0].tolist()
+```
+
+### 17.2. Adaptador de Vector Store (Qdrant)
+**Archivo:** `src/infrastructure/knowledge/qdrant_adapter.py`
+
+Implementa `IVectorStore`.
+
+**Detalle Multi-Tenant (Escalabilidad):**
+*   No crear una "Colección" por empresa (ineficiente).
+*   Crear **una sola colección** llamada `knowledge_base`.
+*   Usar **Payload Filtering** de Qdrant. Cada vector tiene un campo `company_id`.
+*   Al buscar, aplicar un `Filter` obligatorio: `Must(key="company_id", match=company_id)`. Esto garantiza aislamiento total de datos.
+
+---
+
+## 18. GESTIÓN DE PROMPTS ESCALABLE
+
+**Archivo:** `src/infrastructure/config/yaml_prompt_repo.py`
+
+En lugar de hardcodear prompts, usaremos un archivo `prompts.yaml` o una carpeta `prompts/`.
+
+**Estructura sugerida (`prompts.yaml`):**
+```yaml
+companies:
+  nike_store:
+    system_prompt: >
+      Eres un asistente experto en zapatillas Nike. Tu tono es energético y deportivo.
+      Usa la información de contexto para responder sobre stock y devoluciones.
+      Si no sabes, ofrece contactar a un humano.
+  
+  pizza_luigi:
+    system_prompt: >
+      Eres Luigi, un pizzero italiano amigable. Hablas con acento (usando expresiones como 'Mamma Mia').
+      Tu objetivo es vender pizzas de pepperoni.
+```
+
+El adaptador `YamlPromptRepository` lee este archivo. Si llega un request con `company_id="nike_store"`, inyecta el prompt correspondiente.
+
+---
+
+## 19. ORQUESTACIÓN RAG (Lógica de Negocio)
+
+**Archivo:** `src/application/services/rag_service.py`
+
+Este servicio une las piezas. Reemplaza o extiende la lógica anterior.
+
+**Flujo del Método `get_response(user_text, company_id)`:**
+
+1.  **Recuperar Prompt:** `sys_prompt = prompt_repo.get_system_prompt(company_id)`
+2.  **Embedding:** `query_vec = embedding_service.embed_query(user_text)`
+3.  **Búsqueda:** `chunks = vector_store.search(query_vec, company_id)`
+4.  **Construcción de Contexto:**
+    ```python
+    context_str = "\n\n".join([c.content for c in chunks])
+    augmented_prompt = f"""
+    {sys_prompt}
+    
+    INFORMACIÓN DE CONTEXTO RELEVANTE:
+    {context_str}
+    
+    PREGUNTA DEL USUARIO:
+    {user_text}
+    """
+    ```
+5.  **Generación:** Llama al `ILLMProvider` con el `augmented_prompt`.
+
+---
+
+## 20. SCRIPT DE INGESTIÓN (ETL)
+
+Para que el sistema funcione, necesita datos. El agente debe crear un script utilitario: `src/scripts/ingest.py`.
+
+**Funcionalidad:**
+1.  Recibe ruta de archivo (TXT/PDF) y un `company_id`.
+2.  Divide el texto en chunks de ~512 caracteres (con solapamiento).
+3.  Calcula embeddings con `embed_document`.
+4.  Sube a Qdrant con `company_id` en metadata.
+
+---
