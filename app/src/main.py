@@ -141,15 +141,29 @@ async def ingest_knowledge(
 @app.delete("/knowledge/{company_id}", tags=["Admin"], summary="Eliminar Conocimiento de la Empresa")
 async def delete_knowledge(
     company_id: str,
+    point_id: str = Query(None, description="ID específico del punto a eliminar"),
+    source: str = Query(None, description="Filtrar por origen (metadata.source)"),
     orchestrator: ConversationOrchestrator = Depends(get_orchestrator)
 ):
     """
-    Elimina TODA la información de una empresa. 
-    Crucial para remover términos y condiciones obsoletos.
+    Elimina información de una empresa. 
+    - Si no envías parámetros extra, borra TODO lo de la empresa.
+    - Si envías point_id, borra solo ese fragmento.
+    - Si envías source, borra todo lo relacionado a ese origen técnico.
     """
-    success = await orchestrator.vector_store.delete(company_id)
+    filters = {}
+    if point_id:
+        # Nota: En Qdrant el ID del punto puede usarse como filtro en el payload 
+        # o directamente por su ID de estructura. Aquí lo manejamos como metadato.
+        filters["id"] = point_id
+    if source:
+        filters["source"] = source
+
+    success = await orchestrator.vector_store.delete(company_id, filter_metadata=filters if filters else None)
+    
     if success:
-        return {"status": "success", "message": f"Conocimiento de {company_id} eliminado."}
+        detail = "Todo el conocimiento" if not filters else f"Conocimiento filtrado por {list(filters.keys())}"
+        return {"status": "success", "message": f"{detail} de {company_id} eliminado."}
     return {"status": "error", "message": "No se pudo eliminar el conocimiento."}
 
 @app.get("/health", tags=["Sistema"])
