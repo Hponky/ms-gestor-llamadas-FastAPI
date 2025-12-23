@@ -4,7 +4,11 @@ from src.infrastructure.tts.edge_tts_adapter import EdgeTTSAdapter
 from src.infrastructure.embeddings.fastembed_adapter import FastEmbedAdapter
 from src.infrastructure.vector_store.qdrant_adapter import QdrantVectorStoreAdapter
 from src.application.services.conversation_orchestrator import ConversationOrchestrator
+from src.application.services.knowledge_base_service import KnowledgeBaseService
+from src.application.services.completeness_service import CompletenessService
+from fastapi import Depends
 from src.core.config import settings
+from src.application.services.tool_service import tool_manager
 
 @lru_cache()
 def get_llm_service():
@@ -88,10 +92,24 @@ def get_session_repository():
         raise ValueError(f"Unsupported Session provider: {provider}")
 
 @lru_cache()
+def get_kb_service():
+    """Dependency injection for Knowledge Base Service."""
+    return KnowledgeBaseService(
+        vector_store=get_vector_store(),
+        embedding_provider=get_embedding_service()
+    )
+
+
+@lru_cache()
+def get_completeness_service():
+    """Dependency injection for Completeness Service."""
+    return CompletenessService(llm=get_llm_service())
+
+@lru_cache()
 def get_orchestrator():
     """
     Dependency injection for Conversation Orchestrator.
-    Now injects RAG and Session services for multi-tenant support.
+    Now injects RAG, Session, and Tool services for multi-tenant support.
     """
     return ConversationOrchestrator(
         llm_provider=get_llm_service(),
@@ -99,5 +117,7 @@ def get_orchestrator():
         vector_store=get_vector_store(),
         embedding_provider=get_embedding_service(),
         prompt_repository=get_prompt_repository(),
-        session_repository=get_session_repository()
+        session_repository=get_session_repository(),
+        tool_service=tool_manager,
+        completeness_service=get_completeness_service()
     )

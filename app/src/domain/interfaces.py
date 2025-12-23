@@ -9,7 +9,8 @@ class ILLMProvider(ABC):
     async def generate_stream(
         self, 
         messages: List[Dict[str, str]], 
-        system_prompt: str
+        system_prompt: str,
+        tools: List[Dict] = None
     ) -> AsyncGenerator[str, None]:
         """
         Generates text in streaming based on chat history.
