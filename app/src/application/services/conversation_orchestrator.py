@@ -1,6 +1,6 @@
 import asyncio
 import json
-from typing import Optional
+from typing import Optional, List, Dict
 from src.domain.interfaces import (
     ILLMProvider, ITTSProvider, IVectorStore, 
     IEmbeddingProvider, IPromptRepository, ISessionRepository
@@ -39,56 +39,46 @@ class ConversationOrchestrator:
         self._current_task: Optional[asyncio.Task] = None
 
     async def get_chat_response_stream(self, text: str, company_id: str, session_id: str):
-        """
-        Unified method with memory, tools, and completeness check.
-        """
-        # 0. Check for completeness (if service available)
+        """Unified method with memory, tools, and completeness check."""
+        
+        # 0. Check completeness
         if self.completeness_service:
-            analysis = await self.completeness_service.check_completeness(text)
-            if not analysis["is_complete"] and analysis["suggestion"]:
-                # If incomplete, we return a clarification stream
-                async def clarification_stream():
-                    yield analysis["suggestion"]
-                return clarification_stream()
+            stream = await self._handle_completeness(text)
+            if stream: return stream
 
-        # 1. Load Session and dynamic prompt
+        # 1. Setup Session and Prompts
         session = self.session_repository.get_session(session_id) or ConversationSession()
-        base_prompt = self.prompt_repository.get_prompt_for_company(company_id, self.system_prompt)
+        full_system_prompt = await self._build_full_prompt(text, company_id)
         
-        # 2. RAG Search
-        context = await self._get_rag_context(text, company_id)
-        
-        # 3. Final Prompt Composition
-        full_system_prompt = base_prompt if not context else f"{base_prompt}\n\nContexto:\n{context}"
-        
-        # 4. Prepare History
+        # 2. Prepare History
         session.history.append(ChatMessage(role="user", content=text))
         history = [{"role": m.role, "content": m.content} for m in session.history[-self.memory_window:]]
         
-        # 5. Get Tools Schema
-        tools = self.tool_service.get_tools_schema()
+        # 3. Stream logic
+        return self._generate_tracked_stream(history, full_system_prompt, session, session_id)
 
-        # 6. Generate Stream with Tool Handling
+    async def _handle_completeness(self, text: str):
+        analysis = await self.completeness_service.check_completeness(text)
+        if not analysis["is_complete"] and analysis["suggestion"]:
+            async def clarification_stream():
+                yield analysis["suggestion"]
+            return clarification_stream()
+        return None
+
+    async def _build_full_prompt(self, text: str, company_id: str) -> str:
+        base_prompt = self.prompt_repository.get_prompt_for_company(company_id, self.system_prompt)
+        context = await self._get_rag_context(text, company_id)
+        return base_prompt if not context else f"{base_prompt}\n\nContexto:\n{context}"
+
+    def _generate_tracked_stream(self, history: List[Dict], system_prompt: str, session: ConversationSession, session_id: str):
+        tools = self.tool_service.get_tools_schema()
+        
         async def track_response_stream():
             full_response_text = []
             
-            async for chunk in self.llm.generate_stream(history, full_system_prompt, tools=tools):
-                # Detect if the LLM is calling a tool
+            async for chunk in self.llm.generate_stream(history, system_prompt, tools=tools):
                 if chunk.startswith("__TOOL_CALL__:"):
-                    calls_data = json.loads(chunk.replace("__TOOL_CALL__:", ""))
-                    
-                    # Execute Tools and get results
-                    for call in calls_data:
-                        name = call["function"]["name"]
-                        args = json.loads(call["function"]["arguments"])
-                        result = await self.tool_service.execute_tool(name, args)
-                        
-                        # Add tool interaction to history
-                        history.append({"role": "assistant", "content": None, "tool_calls": [call]})
-                        history.append({"role": "tool", "tool_call_id": call["id"], "name": name, "content": result})
-                    
-                    # Get final response from LLM using tool results
-                    async for sub_chunk in self.llm.generate_stream(history, full_system_prompt):
+                    async for sub_chunk in self._handle_tool_calls(chunk, history, system_prompt):
                         full_response_text.append(sub_chunk)
                         yield sub_chunk
                     break
@@ -96,12 +86,24 @@ class ConversationOrchestrator:
                 full_response_text.append(chunk)
                 yield chunk
             
-            # 7. Update Session
             complete_text = "".join(full_response_text)
             session.history.append(ChatMessage(role="assistant", content=complete_text))
             self.session_repository.save_session(session_id, session)
 
         return track_response_stream()
+
+    async def _handle_tool_calls(self, tool_chunk: str, history: List[Dict], system_prompt: str):
+        calls_data = json.loads(tool_chunk.replace("__TOOL_CALL__:", ""))
+        for call in calls_data:
+            name = call["function"]["name"]
+            args = json.loads(call["function"]["arguments"])
+            result = await self.tool_service.execute_tool(name, args)
+            
+            history.append({"role": "assistant", "content": None, "tool_calls": [call]})
+            history.append({"role": "tool", "tool_call_id": call["id"], "name": name, "content": result})
+        
+        async for chunk in self.llm.generate_stream(history, system_prompt):
+            yield chunk
 
     async def _get_rag_context(self, text: str, company_id: str) -> str:
         try:

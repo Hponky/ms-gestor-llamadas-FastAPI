@@ -47,7 +47,8 @@ class ToolService:
 
 # --- Ejemplo de Herramienta para Llamadas/Chat ---
 async def get_delivery_status(order_id: str):
-    # Aquí iría tu llamada real a la DB o API de envíos
+    # Simular latencia de red/DB
+    await asyncio.sleep(0.1)
     return f"El pedido {order_id} se encuentra en camino y llegará hoy antes de las 6 PM."
 
 # Instancia global (o inyectada)
