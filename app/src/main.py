@@ -1,10 +1,12 @@
 from contextlib import asynccontextmanager
-from fastapi import FastAPI, Depends, Query, status
+from fastapi import FastAPI, Depends, Query, status, File, UploadFile, Form
 from fastapi.responses import StreamingResponse
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
+from typing import List
 from src.api.dependencies import get_orchestrator
 from src.application.services.conversation_orchestrator import ConversationOrchestrator
+from src.application.services.document_processor import DocumentProcessor
 from src.core.logger import setup_logging, logger
 
 @asynccontextmanager
@@ -113,6 +115,101 @@ async def ingest_knowledge(
     if success:
         return {"status": "success", "id": point_id, "message": "Conocimiento guardado/actualizado."}
     return {"status": "error", "message": "No se pudo guardar el conocimiento."}
+
+@app.post("/ingest/file", tags=["Admin"], summary="Subir Documento (PDF, TXT, Excel, Imagen)")
+async def ingest_file(
+    company_id: str = Form(...),
+    file: UploadFile = File(...),
+    orchestrator: ConversationOrchestrator = Depends(get_orchestrator)
+):
+    """
+    Sube un archivo, extrae su texto (con OCR si es necesario) y lo indexa para una empresa.
+    """
+    try:
+        content = await file.read()
+        text = DocumentProcessor.extract_text(content, file.filename)
+        
+        if not text.strip():
+            return {"status": "error", "message": "No se pudo extraer texto del archivo."}
+
+        # 1. Chunking (Fragmentación del texto para mejor RAG)
+        # Cortamos en pedazos de ~1000 caracteres con solapamiento
+        chunks = [text[i:i+1000] for i in range(0, len(text), 800)]
+        
+        points = []
+        import uuid
+        for i, chunk in enumerate(chunks):
+            point_id = str(uuid.uuid4())
+            vector = orchestrator.embedding_provider.embed_text(chunk)
+            points.append({
+                "id": point_id,
+                "vector": vector,
+                "payload": {
+                    "text": chunk,
+                    "company_id": company_id,
+                    "source": file.filename,
+                    "chunk_index": i
+                }
+            })
+
+        # 2. Guardar en Bloque (Mucho más eficiente que uno por uno)
+        success = await orchestrator.vector_store.upsert(points)
+        
+        if success:
+            return {
+                "status": "success", 
+                "company_id": company_id,
+                "chunks": len(chunks),
+                "message": f"Archivo '{file.filename}' procesado e indexado."
+            }
+        return {"status": "error", "message": "Fallo al indexar en la base vectorial."}
+        
+    except Exception as e:
+        logger.error("Error in file ingestion", error=str(e))
+        return {"status": "error", "message": str(e)}
+
+@app.post("/ingest/bulk", tags=["Admin"], summary="Subir Múltiples Archivos")
+async def ingest_bulk(
+    company_id: str = Form(...),
+    files: List[UploadFile] = File(...),
+    orchestrator: ConversationOrchestrator = Depends(get_orchestrator)
+):
+    """
+    Versión masiva para cargar múltiples documentos a la vez.
+    """
+    total_chunks = 0
+    errors = []
+    
+    for file in files:
+        try:
+            content = await file.read()
+            text = DocumentProcessor.extract_text(content, file.filename)
+            if not text.strip():
+                errors.append(f"No text in {file.filename}")
+                continue
+                
+            chunks = [text[i:i+1000] for i in range(0, len(text), 800)]
+            points = []
+            import uuid
+            for i, chunk in enumerate(chunks):
+                vector = orchestrator.embedding_provider.embed_text(chunk)
+                points.append({
+                    "id": str(uuid.uuid4()),
+                    "vector": vector,
+                    "payload": {"text": chunk, "company_id": company_id, "source": file.filename}
+                })
+            
+            await orchestrator.vector_store.upsert(points)
+            total_chunks += len(chunks)
+        except Exception as e:
+            errors.append(f"Error in {file.filename}: {str(e)}")
+
+    return {
+        "status": "partial_success" if errors else "success",
+        "total_files": len(files),
+        "total_chunks": total_chunks,
+        "errors": errors
+    }
 
 @app.delete("/knowledge/{company_id}", tags=["Admin"], summary="Eliminar Conocimiento de la Empresa")
 async def delete_knowledge(

@@ -1,113 +1,124 @@
-# HAR-228 Text-to-Voice AI Microservice
+# HAR-228 Voice AI & RAG Microservice
 
-Microservicio avanzado diseñado para transformar texto en voz en tiempo real. Utiliza un modelo de lenguaje (LLM) para interpretar la entrada y un motor de síntesis (TTS) para generar audio fluido en formato MP3.
-
-## 🚀 Características Principales
-- **Inteligencia Real**: Procesa el texto a través de Mistral AI (vía OpenRouter) para generar respuestas coherentes.
-- **Síntesis de Voz Fluida**: Utiliza Edge-TTS para una voz natural en español (es-MX-JorgeNeural).
-- **Streaming de Audio**: El audio se entrega mediante *StreamingResponse*, permitiendo la reproducción inmediata mientras se genera.
-- **CORS Habilitado**: Configurado para integrarse fácilmente con cualquier frontend moderno.
-- **Limpieza Automática**: Filtra emojis y caracteres especiales para garantizar la estabilidad del motor de voz.
-- **Arquitectura Hexagonal**: Estructura modular que separa la lógica de negocio de los proveedores externos.
-
-## 🛠️ Requisitos
-- **Python 3.12+**
-- **FFmpeg** (Opcional, para procesamiento avanzado de audio)
-- **OpenRouter API Key**
+Microservicio de nivel empresarial diseñado para transformar texto en voz en tiempo real, potenciado con **RAG (Retrieval-Augmented Generation)** para respuestas basadas en conocimiento específico de empresas y **Gestión de Sesiones** persistente.
 
 ---
 
-## 💻 Instalación y Configuración
+## 🚀 Características Avanzadas
 
-1. **Clonar e instalar dependencias**:
+- **RAG Multi-tenant**: Búsqueda semántica en base de datos vectorial (**Qdrant**) con aislamiento estricto por `company_id`.
+- **Memoria de Sesión**: Persistencia de conversaciones usando **Redis**, permitiendo escalabilidad horizontal.
+- **Prompts Dinámicos**: Configuración de "personalidades" y comportamientos por empresa mediante archivos YAML.
+- **Inteligencia**: Integración con **OpenRouter** (Mistral, Claude, GPT, etc.) y embeddings con **FastEmbed**.
+- **Voz Fluida**: Síntesis de voz natural con **Edge-TTS** alineada al español latino.
+
+---
+
+## 🛠️ Modos de Ejecución
+
+### 1. Ejecución Local (Desarrollo Rápido)
+
+Ideal para probar cambios en el código sin depender de Docker para la aplicación.
+
+1. **Actualizar dependencias**:
    ```powershell
-   python -m venv venv
-   .\venv\Scripts\Activate.ps1
-   pip install -r app/requirements.txt
+   .\venv\Scripts\python.exe -m pip install -r app/requirements.txt
+   ```
+2. **Levantar servicios de apoyo (Redis y Qdrant)**:
+   ```powershell
+   docker-compose up -d redis qdrant
+   ```
+3. **Inicializar Base Vectorial (Solo la primera vez)**:
+   ```powershell
+   $env:PYTHONPATH="app"; .\venv\Scripts\python.exe app/scripts/init_qdrant.py
+   ```
+4. **Iniciar App**:
+   ```powershell
+   $env:PYTHONPATH="app"; .\venv\Scripts\python.exe -m src.main
    ```
 
-2. **Variables de Entorno**:
-   Crea un archivo `.env` en la carpeta `app/` basándote en `.env.example`:
-   ```env
-   OPENROUTER_API_KEY=tu_clave_aqui
-   OPENROUTER_MODEL=mistralai/devstral-2512:free
-   TTS_PROVIDER=edge_tts
-   ```
+### 2. Ejecución con Docker Compose (Stack Completo)
 
----
-
-## 🏃 Ejecución
-
-Desde la raíz del proyecto:
-```powershell
-$env:PYTHONPATH="app"; .\venv\Scripts\python.exe -m src.main
-```
-El servidor estará disponible en `http://localhost:8000`.
-
----
-
-## 🧪 Métodos de Prueba
-
-### 1. Prueba Directa en Navegador (Recomendado para Audio)
-La forma más rápida de verificar que el audio se escucha correctamente es usar el método GET:
-- Abre: `http://localhost:8000/chat?text=Hola HAR-228, dime que el sistema funciona correctamente`
-
-### 2. Swagger UI (Documentación Interactiva)
-Para ver todos los detalles técnicos y probar el endpoint POST:
-- Ve a: `http://localhost:8000/docs`
-
-### 3. Integración vía API (POST)
-Endpoint: `POST /chat`
-Cuerpo (JSON):
-```json
-{
-  "text": "Hola, ¿cuál es tu función principal?"
-}
-```
-
----
-
-## 🐋 Despliegue con Docker (Alta Concurrencia)
-Para producción o entornos de nube, se recomienda usar el contenedor Docker que ya viene pre-configurado con **Gunicorn**:
+Levanta todo el ecosistema (App + Redis + Qdrant) en contenedores vinculados.
 
 ```powershell
-# 1. Construir la imagen
-docker build -t har228-service .
-
-# 2. Correr el contenedor
-docker run -p 8000:8000 --env-file app/.env har228-service
+docker-compose up --build
 ```
 
 ---
 
-## 🛠️ Escalabilidad (Futuros LLMs)
-El microservicio está diseñado siguiendo el principio de inversión de dependencias. Para añadir un nuevo proveedor (ej. Gemini o OpenAI directo):
-1. Crea un nuevo adaptador en `app/src/infrastructure/llm/`.
-2. Implementa la interfaz `ILLMProvider`.
-3. Regístralo en `app/src/api/dependencies.py`.
-4. Cambia `LLM_PROVIDER` en tu `.env`.
+## 🔗 Acceso Rápido (Local)
+
+Una vez que el servicio esté corriendo, puedes acceder a:
+- **Documentación Swagger**: [http://localhost:8000/docs](http://localhost:8000/docs) (Para probar endpoints)
+- **Estado del Sistema**: [http://localhost:8000/health](http://localhost:8000/health)
+- **Documentación Redoc**: [http://localhost:8000/redoc](http://localhost:8000/redoc)
 
 ---
 
-## 🏗️ Estructura de Capas
-- **Domain**: Define las interfaces (`ILLMProvider`, `ITTSProvider`) y entidades del sistema.
-- **Application**: Orquesta el flujo entre el LLM y el TTS.
-- **Infrastructure**: Implementa los adaptadores reales para OpenRouter y Edge-TTS.
-- **API**: Expone los endpoints REST usando FastAPI.
+## 🏢 Gestión del Conocimiento (Tenant Management)
 
----
+HAR-228 permite gestionar el conocimiento de múltiples empresas de forma aislada. Soporta:
+- **Formatos**: `.txt`, `.pdf` (con OCR), `.xlsx`, `.csv`, `.png`, `.jpg`.
+- **OCR Automático**: Si un PDF escaneado o una imagen no tiene texto legible, el sistema intentará extraerlo usando Tesseract.
 
-## 🛠️ Herramientas de Calidad (Enterprise Ready)
+### 📥 Ingestar un Documento (Vía API)
+Puedes usar **Swagger** (`/docs`) o `curl`:
+```bash
+# Ejemplo subiendo un PDF
+curl -X POST "http://localhost:8000/ingest/file" \
+     -F "company_id=mi-empresa-pro" \
+     -F "file=@/ruta/a/tu/archivo.pdf"
+```
 
-### 📈 Logs Persistentes
-El sistema genera logs avanzados con **Structlog**. En producción, los logs se guardan en la carpeta `logs/app.log` con rotación automática (10MB) para evitar llenar el disco.
-
-### 🧪 Tests Automatizados
-Para verificar la lógica de orquestación sin gastar créditos de OpenAI/Mistral:
+### 📁 Ingesta Masiva (Script CLI)
+Para cargar carpetas enteras de documentos a una empresa:
 ```powershell
-# Ejecutar tests unitarios (con mocks)
-$env:PYTHONPATH="app"; pytest tests/test_orchestrator.py
+$env:PYTHONPATH="app"; .\venv\Scripts\python.exe app/scripts/bulk_ingest_folder.py --folder "C:/MisDocumentos/EmpresaA" --company "empresa-a"
 ```
 
-### 🤖 CI/CD (GitHub Actions)
-Se ha incluido un flujo de trabajo en `.github/workflows/ci.yml` que valida automáticamente tu código en cada `push` o `pull request`.
+> **Nota sobre OCR**: Para que el procesamiento de imágenes y PDFs escaneados funcione, debes tener instalado **Tesseract OCR** en tu sistema y disponible en el PATH.
+
+### 🧠 Búsqueda Contextual (Chat)
+El sistema buscará automáticamente en la base de datos de la empresa para responder.
+```http
+GET /chat?text=¿cuanto cuestan los envíos?&company_id=mi-empresa-abc&session_id=usuario-123
+```
+
+---
+
+## ☁️ Recomendaciones de Producción
+
+Para un entorno real de alta concurrencia, se recomienda **desacoplar** el almacenamiento de la lógica:
+
+1. **Lógica**: Desplegar el contenedor de HAR-228 en **AWS App Runner** o **Google Cloud Run**.
+2. **Vectores**: Usar **Qdrant Cloud** (Servicio gestionado) para evitar administrar infraestructura de bases de datos.
+3. **Sesiones**: Usar **Upstash Redis** o **AWS ElastiCache**.
+4. **Configuración**: Solo debes cambiar las URLs en el `.env` (ver `.env.example`).
+
+---
+
+## 🏗️ Estructura del Proyecto
+
+```text
+├── app/
+│   ├── src/
+│   │   ├── api/            # Endpoints y Dependencias (Factory)
+│   │   ├── application/    # Orquestador RAG y lógica de negocio
+│   │   ├── domain/         # Interfaces (Ports) y Entidades
+│   │   ├── infrastructure/ # Adaptadores (Redis, Qdrant, OpenRouter, Edge-TTS)
+│   │   └── core/           # Configuración y Logging
+│   └── scripts/            # Scripts de inicialización
+├── tests/                  # Pruebas unitarias con Mocks
+├── docker-compose.yml       # Orquestación local de servicios
+└── Dockerfile               # Imagen optimizada para producción
+```
+
+---
+
+## 🧪 Calidad y Pruebas
+
+```powershell
+# Ejecutar tests para validar la orquestación (sin usar créditos)
+$env:PYTHONPATH="app"; pytest tests/
+```

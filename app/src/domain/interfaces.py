@@ -1,5 +1,5 @@
 from abc import ABC, abstractmethod
-from typing import AsyncGenerator, List, Dict
+from typing import AsyncGenerator, List, Dict, Optional
 from src.domain.entities import ConversationSession
 
 class ILLMProvider(ABC):
