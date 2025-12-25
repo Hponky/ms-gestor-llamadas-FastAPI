@@ -21,10 +21,11 @@ class QdrantVectorStoreAdapter(IVectorStore):
             logger.error("Failed to initialize Qdrant client", error=str(e))
             raise
 
-    async def search(self, query_vector: List[float], company_id: str, limit: int = 5) -> List[Dict]:
+    async def search(self, query_vector: List[float], company_id: str, limit: int = 5, score_threshold: float = 0.7) -> List[Dict]:
         """
         Performs a vector search filtering strictly by company_id.
         This ensures isolation between different tenants.
+        score_threshold helps filtering irrelevant results.
         """
         try:
             search_result = self.client.search(
@@ -39,6 +40,7 @@ class QdrantVectorStoreAdapter(IVectorStore):
                     ]
                 ),
                 limit=limit,
+                score_threshold=score_threshold
             )
             
             # Extract payload (metadata) from results

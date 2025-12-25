@@ -8,6 +8,7 @@ from src.domain.interfaces import (
 from src.domain.entities import ChatMessage, ConversationSession
 from src.application.services.tool_service import tool_manager, ToolService
 from src.application.services.completeness_service import CompletenessService
+from src.application.services.security_service import SecurityService
 from src.core.logger import logger
 
 class ConversationOrchestrator:
@@ -21,6 +22,7 @@ class ConversationOrchestrator:
         session_repository: ISessionRepository,
         tool_service: ToolService = tool_manager,
         completeness_service: Optional[CompletenessService] = None,
+        security_service: Optional[SecurityService] = None,
         system_prompt: str = "Eres HAR-228, un asistente de voz avanzado. Responde de forma concisa y natural.",
         memory_window: int = 10
     ):
@@ -32,6 +34,7 @@ class ConversationOrchestrator:
         self.session_repository = session_repository
         self.tool_service = tool_service
         self.completeness_service = completeness_service
+        self.security_service = security_service
         self.system_prompt = system_prompt
         self.memory_window = memory_window
         
@@ -39,9 +42,17 @@ class ConversationOrchestrator:
         self._current_task: Optional[asyncio.Task] = None
 
     async def get_chat_response_stream(self, text: str, company_id: str, session_id: str):
-        """Unified method with memory, tools, and completeness check."""
+        """Unified method with memory, tools, and security checks."""
         
-        # 0. Check completeness
+        # 0. Security Input Validation
+        if self.security_service:
+            is_safe, reason = self.security_service.validate_input(text)
+            if not is_safe:
+                async def security_rejection_stream():
+                    yield reason
+                return security_rejection_stream()
+
+        # 1. Check completeness
         if self.completeness_service:
             stream = await self._handle_completeness(text)
             if stream: return stream
@@ -68,6 +79,11 @@ class ConversationOrchestrator:
     async def _build_full_prompt(self, text: str, company_id: str) -> str:
         base_prompt = self.prompt_repository.get_prompt_for_company(company_id, self.system_prompt)
         context = await self._get_rag_context(text, company_id)
+        
+        if self.security_service:
+            # Use structured XML prompting for defense
+            return self.security_service.secure_prompt_construction(base_prompt, text, context)
+            
         return base_prompt if not context else f"{base_prompt}\n\nContexto:\n{context}"
 
     def _generate_tracked_stream(self, history: List[Dict], system_prompt: str, session: ConversationSession, session_id: str):
@@ -87,6 +103,11 @@ class ConversationOrchestrator:
                 yield chunk
             
             complete_text = "".join(full_response_text)
+            
+            # Security: Redact PII before saving to history
+            if self.security_service:
+                complete_text = self.security_service.sanitize_content(complete_text)
+
             session.history.append(ChatMessage(role="assistant", content=complete_text))
             self.session_repository.save_session(session_id, session)
 

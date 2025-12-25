@@ -6,6 +6,7 @@ from src.infrastructure.vector_store.qdrant_adapter import QdrantVectorStoreAdap
 from src.application.services.conversation_orchestrator import ConversationOrchestrator
 from src.application.services.knowledge_base_service import KnowledgeBaseService
 from src.application.services.completeness_service import CompletenessService
+from src.application.services.security_service import SecurityService
 from fastapi import Depends
 from src.core.config import settings
 from src.application.services.tool_service import tool_manager
@@ -106,10 +107,15 @@ def get_completeness_service():
     return CompletenessService(llm=get_llm_service())
 
 @lru_cache()
+def get_security_service():
+    """Dependency injection for Security Service (Guardrails)."""
+    return SecurityService()
+
+@lru_cache()
 def get_orchestrator():
     """
     Dependency injection for Conversation Orchestrator.
-    Now injects RAG, Session, and Tool services for multi-tenant support.
+    Now injects RAG, Session, Tool, and Security services for multi-tenant support.
     """
     return ConversationOrchestrator(
         llm_provider=get_llm_service(),
@@ -119,5 +125,6 @@ def get_orchestrator():
         prompt_repository=get_prompt_repository(),
         session_repository=get_session_repository(),
         tool_service=tool_manager,
-        completeness_service=get_completeness_service()
+        completeness_service=get_completeness_service(),
+        security_service=get_security_service()
     )

@@ -43,7 +43,7 @@ class IVectorStore(ABC):
     """Port for Vector Storage and retrieval."""
     
     @abstractmethod
-    async def search(self, query_vector: List[float], company_id: str, limit: int = 5) -> List[Dict]:
+    async def search(self, query_vector: List[float], company_id: str, limit: int = 5, score_threshold: float = 0.7) -> List[Dict]:
         """Search for similar contexts filtering by company_id."""
         pass
 
